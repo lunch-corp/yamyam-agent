@@ -101,92 +101,125 @@ class YamyamAgent:
         # Runnable 기반 agent 체인 구성
         self.agent = self._create_agent_chain()
 
+    def _prepare_input(self, data: dict[str, Any], tools_description: str) -> dict[str, Any]:
+        """
+        LLM 호출을 위한 입력 데이터를 준비합니다.
+
+        Args:
+            data: 현재 상태 데이터
+            tools_description: 도구 설명 문자열
+
+        Returns:
+            프롬프트에 전달할 입력 데이터
+        """
+        return {
+            "input": data.get("input", ""),
+            "tools": tools_description,
+            "agent_scratchpad": data.get("agent_scratchpad", ""),
+        }
+
+    def _call_llm(self, data: dict[str, Any]) -> dict[str, Any]:
+        """
+        LLM을 호출하여 응답을 받습니다.
+
+        Args:
+            data: 프롬프트 데이터 (input, tools, agent_scratchpad 포함)
+
+        Returns:
+            LLM 응답이 추가된 데이터
+        """
+        prompt = self.prompt_template.format(**data)
+        response = self.llm.invoke(prompt)
+        content = response.content if hasattr(response, "content") else str(response)
+        return {**data, "llm_response": content}
+
+    def _parse_and_execute(self, data: dict[str, Any]) -> dict[str, Any]:
+        """
+        LLM 응답에서 Action을 파싱하고 실행합니다.
+
+        Args:
+            data: LLM 응답이 포함된 데이터
+
+        Returns:
+            실행 결과가 포함된 데이터 (최종 답변이면 output 포함)
+        """
+        llm_response = data.get("llm_response", "")
+        scratchpad = data.get("agent_scratchpad", "")
+
+        # Action과 Action Input 추출
+        action_match = re.search(r"Action:\s*(\w+)", llm_response)
+        action_input_match = re.search(r"Action Input:\s*(.+)", llm_response, re.DOTALL)
+
+        if action_match and action_input_match:
+            action = action_match.group(1).strip()
+            action_input_str = action_input_match.group(1).strip()
+
+            # 도구 실행
+            if action in self.tool_map:
+                try:
+                    # Action Input을 파싱 (간단한 JSON 또는 문자열)
+                    tool_input = self._parse_action_input(action_input_str)
+                    tool_result = self.tool_map[action].invoke(tool_input)
+                    scratchpad += f"\n{llm_response}\nObservation: {tool_result}\n"
+                except Exception as e:
+                    scratchpad += f"\n{llm_response}\nObservation: 에러 - {str(e)}\n"
+            else:
+                scratchpad += (
+                    f"\n{llm_response}\nObservation: 도구 '{action}'를 찾을 수 없습니다.\n"
+                )
+        else:
+            # 최종 답변인 경우
+            return {"output": llm_response, "agent_scratchpad": scratchpad}
+
+        return {"agent_scratchpad": scratchpad, "input": data.get("input", "")}
+
+    def _run_with_iteration(
+        self, input_data: dict[str, Any], tools_description: str, max_iterations: int = 10
+    ) -> str:
+        """
+        Agent 실행을 반복적으로 수행합니다.
+
+        Args:
+            input_data: 초기 입력 데이터
+            tools_description: 도구 설명 문자열
+            max_iterations: 최대 반복 횟수
+
+        Returns:
+            최종 응답 문자열
+        """
+        current_data = {"input": input_data.get("input", ""), "agent_scratchpad": ""}
+
+        for _ in range(max_iterations):
+            # 입력 준비
+            prepared = self._prepare_input(current_data, tools_description)
+            # LLM 호출
+            llm_data = self._call_llm(prepared)
+            # Action 파싱 및 실행
+            result = self._parse_and_execute(llm_data)
+
+            if "output" in result:
+                return result["output"]
+
+            current_data = result
+
+        # 최대 반복 횟수 초과 시 마지막 LLM 응답 반환
+        final_prompt = self.prompt_template.format(
+            input=current_data.get("input", ""),
+            tools=tools_description,
+            agent_scratchpad=current_data.get("agent_scratchpad", ""),
+        )
+        final_response = self.llm.invoke(final_prompt)
+        return final_response.content if hasattr(final_response, "content") else str(final_response)
+
     def _create_agent_chain(self) -> Runnable:
         """Runnable 기반 agent 체인 생성."""
-        # 도구 정보를 문자열로 변환
         tools_description = self._format_tools_description()
 
-        # 입력 준비
-        def prepare_input(data: dict[str, Any]) -> dict[str, Any]:
-            return {
-                "input": data.get("input", ""),
-                "tools": tools_description,
-                "agent_scratchpad": data.get("agent_scratchpad", ""),
-            }
+        def run_agent(input_data: dict[str, Any]) -> str:
+            """RunnableLambda에 전달할 래퍼 함수."""
+            return self._run_with_iteration(input_data, tools_description)
 
-        # LLM 호출
-        def call_llm(data: dict[str, Any]) -> dict[str, Any]:
-            prompt = self.prompt_template.format(**data)
-            response = self.llm.invoke(prompt)
-            content = response.content if hasattr(response, "content") else str(response)
-            return {**data, "llm_response": content}
-
-        # Action 파싱 및 실행
-        def parse_and_execute(data: dict[str, Any]) -> dict[str, Any]:
-            llm_response = data.get("llm_response", "")
-            scratchpad = data.get("agent_scratchpad", "")
-
-            # Action과 Action Input 추출
-            action_match = re.search(r"Action:\s*(\w+)", llm_response)
-            action_input_match = re.search(r"Action Input:\s*(.+)", llm_response, re.DOTALL)
-
-            if action_match and action_input_match:
-                action = action_match.group(1).strip()
-                action_input_str = action_input_match.group(1).strip()
-
-                # 도구 실행
-                if action in self.tool_map:
-                    try:
-                        # Action Input을 파싱 (간단한 JSON 또는 문자열)
-                        tool_input = self._parse_action_input(action_input_str)
-                        tool_result = self.tool_map[action].invoke(tool_input)
-                        scratchpad += f"\n{llm_response}\nObservation: {tool_result}\n"
-                    except Exception as e:
-                        scratchpad += f"\n{llm_response}\nObservation: 에러 - {str(e)}\n"
-                else:
-                    scratchpad += (
-                        f"\n{llm_response}\nObservation: 도구 '{action}'를 찾을 수 없습니다.\n"
-                    )
-            else:
-                # 최종 답변인 경우
-                return {"output": llm_response, "agent_scratchpad": scratchpad}
-
-            return {"agent_scratchpad": scratchpad, "input": data.get("input", "")}
-
-        # 최대 반복 횟수 제한
-        max_iterations = 10
-
-        # 반복 실행을 위한 래퍼
-        def run_with_iteration(input_data: dict[str, Any]) -> str:
-            current_data = {"input": input_data.get("input", ""), "agent_scratchpad": ""}
-
-            for _ in range(max_iterations):
-                # 입력 준비
-                prepared = prepare_input(current_data)
-                # LLM 호출
-                llm_data = call_llm(prepared)
-                # Action 파싱 및 실행
-                result = parse_and_execute(llm_data)
-
-                if "output" in result:
-                    return result["output"]
-
-                current_data = result
-
-            # 최대 반복 횟수 초과 시 마지막 LLM 응답 반환
-            final_prompt = self.prompt_template.format(
-                input=current_data.get("input", ""),
-                tools=tools_description,
-                agent_scratchpad=current_data.get("agent_scratchpad", ""),
-            )
-            final_response = self.llm.invoke(final_prompt)
-            return (
-                final_response.content
-                if hasattr(final_response, "content")
-                else str(final_response)
-            )
-
-        return RunnableLambda(run_with_iteration)
+        return RunnableLambda(run_agent)
 
     def _format_tools_description(self) -> str:
         """도구 목록을 문자열로 포맷팅."""
