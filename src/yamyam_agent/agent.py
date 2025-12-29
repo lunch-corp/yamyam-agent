@@ -11,8 +11,8 @@ from langchain_core.tools import BaseTool
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from .mcp_client import MCPClientSync
-from .prompts import get_system_prompt
 from .tool_adapter import create_langchain_tools_from_mcp
+from .utils.prompt_loader import get_system_prompt
 
 # 환경 변수 로드
 load_dotenv()
