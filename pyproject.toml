@@ -60,7 +60,7 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 [tool.ruff.lint.isort]
-known-first-party = ["yamyam_agent"]
+known-first-party = ["agents", "clients", "mcp_tools", "utils"]
 
 [tool.black]
 line-length = 100
@@ -69,4 +69,4 @@ target-version = ["py311"]
 [tool.isort]
 profile = "black"
 line_length = 100
-known_first_party = ["yamyam_agent"]
+known_first_party = ["agents", "clients", "mcp_tools", "utils"]
