@@ -17,6 +17,7 @@ dependencies = [
     "pytest>=9.0.2",
     "python-dotenv>=1.0.0",
     "pyyaml>=6.0.0",
+    "typing-extensions>=4.0.0",
 ]
 
 [project.scripts]
@@ -70,3 +71,8 @@ target-version = ["py311"]
 profile = "black"
 line_length = 100
 known_first_party = ["agents", "clients", "mcp_tools", "utils"]
+
+[tool.hatch.build.targets.wheel]
+# `src/yamyam_agent/` 패키지를 제거하면서 자동 패키지 탐지가 실패해
+# `uv run`이 editable build 단계에서 죽습니다. 빌드에 포함할 패키지를 명시합니다.
+packages = ["src/agents", "src/clients", "src/utils"]
