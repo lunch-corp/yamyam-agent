@@ -36,7 +36,7 @@ def _run(state: AgentState) -> AgentState:
     )
     try:
         output = agent.run(query)
-        return {"query": query, "output": output}
+        return {"output": output}
     finally:
         agent.close()
 
