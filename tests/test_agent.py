@@ -14,7 +14,7 @@ def test_agent() -> None:
 
     try:
         # Agent 생성
-        agent = YamyamAgent(model_name="gemini-2.5-flash")
+        agent = YamyamAgent()
 
         # 테스트 쿼리
         test_queries = [

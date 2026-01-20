@@ -1,0 +1,8 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "yamyam": "yamyam_agent.studio_graph:graph"
+  },
+  "env": ".env"
+}
+
