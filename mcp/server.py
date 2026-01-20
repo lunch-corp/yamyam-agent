@@ -29,6 +29,11 @@ def main() -> None:
         default=None,
         help="Endpoint path for HTTP transports (default: FastMCP settings, sse=/sse, http=/mcp)",
     )
+    parser.add_argument(
+        "--reload",
+        action="store_true",
+        help="(HTTP transports only) Enable auto-reload during development",
+    )
     args = parser.parse_args()
 
     if args.transport == "stdio":
@@ -36,7 +41,14 @@ def main() -> None:
         return
 
     # For HTTP transports, run an ASGI server (uvicorn) under the hood.
-    mcp.run(transport=args.transport, host=args.host, port=args.port, path=args.path)
+    uvicorn_config = {"reload": True} if args.reload else None
+    mcp.run(
+        transport=args.transport,
+        host=args.host,
+        port=args.port,
+        path=args.path,
+        uvicorn_config=uvicorn_config,
+    )
 
 
 if __name__ == "__main__":

@@ -139,17 +139,57 @@ class YamyamAgent:
             return {"query": query}
         return {}
 
+    def _tool_exists(self, name: str) -> bool:
+        return any(getattr(t, "name", None) == name for t in self.list_tools())
+
     def run(self, query: str = "") -> str:
-        """tool_name이 지정되면 해당 MCP 도구를 호출하고, 아니면 도구 정보를 보여줍니다."""
-        if not self.tool_name:
+        """간단 실행 엔트리포인트.
+
+        - tool_name이 지정되면: 해당 MCP 도구를 호출(쿼리 없으면 설명 출력)
+        - tool_name이 없으면: query에 따라 기본 동작 수행
+          - "역할/뭐 할 수" 질문: 소개 + 도구 목록
+          - 추천/먹을거 질문: recommend_menu가 있으면 호출
+          - 그 외: echo가 있으면 echo 호출
+        """
+        if not query and not self.tool_name:
             return self.describe_one_tool(None)
 
-        # query가 없으면 호출 대신 스키마/설명을 보여줍니다.
+        if not self.tool_name:
+            q = (query or "").strip()
+            q_l = q.lower()
+            if q and any(
+                k in q_l for k in ["역할", "뭐", "뭘", "할 수", "할수", "기능", "help", "사용법"]
+            ):
+                tool_names = [getattr(t, "name", "unknown") for t in self.list_tools()]
+                return (
+                    "나는 MCP 서버에 등록된 도구를 찾아 호출하는 간단한 에이전트야.\n"
+                    f"사용 가능한 도구: {', '.join(tool_names) if tool_names else '(없음)'}\n"
+                    "특정 도구를 쓰려면 tool_name을 지정하거나, "
+                    "추천/메뉴 요청이면 recommend_menu를 자동 호출해."
+                )
+
+            if q and any(
+                k in q_l for k in ["추천", "메뉴", "뭐 먹", "뭘 먹", "먹을", "점심", "저녁"]
+            ):
+                if self._tool_exists("recommend_menu"):
+                    try:
+                        return str(self.call_tool("recommend_menu", {"request": q}))
+                    except Exception as e:
+                        return f"도구 호출 실패: recommend_menu :: {type(e).__name__}: {e}"
+
+            if q and self._tool_exists("echo"):
+                try:
+                    return str(self.call_tool("echo", {"query": q}))
+                except Exception as e:
+                    return f"도구 호출 실패: echo :: {type(e).__name__}: {e}"
+
+            return self.describe_one_tool(None)
+
+        # tool_name이 지정된 경우
         if not query:
             return self.describe_one_tool(self.tool_name)
 
-        tools = self.list_tools()
-        if not any(getattr(t, "name", None) == self.tool_name for t in tools):
+        if not self._tool_exists(self.tool_name):
             return f"도구를 찾을 수 없습니다: {self.tool_name}\n\n" + self.describe_one_tool(None)
 
         args = self._default_arguments_for_tool(self.tool_name, query)
