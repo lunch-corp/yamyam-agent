@@ -10,7 +10,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
-from .mcp_client import MCPClientSync
+from clients.mcp_client import MCPClientSync
 
 load_dotenv()
 

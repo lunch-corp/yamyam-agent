@@ -11,7 +11,7 @@ from typing import TypedDict
 
 from langgraph.graph import END, StateGraph
 
-from yamyam_agent.agent import YamyamAgent  # noqa: E402
+from agents.agent import YamyamAgent  # noqa: E402
 
 
 class AgentState(TypedDict, total=False):
