@@ -127,9 +127,37 @@ class YamyamAgent:
 
         return f"선택된 MCP 도구\n- name: {name}\n- description: {desc}\n- inputSchema: {schema}\n"
 
-    def run(self, _query: str = "") -> str:
-        """현재 등록된 MCP 도구 중 하나를 보여줍니다."""
-        return self.describe_one_tool(self.tool_name)
+    def call_tool(self, name: str, arguments: dict[str, Any] | None = None) -> Any:
+        """MCP 도구를 호출합니다."""
+        return self.mcp_client.call_tool(name, arguments or {})
+
+    def _default_arguments_for_tool(self, tool_name: str, query: str) -> dict[str, Any]:
+        """간단한 데모용: query를 각 도구의 기본 입력 필드에 매핑합니다."""
+        if tool_name == "recommend_menu":
+            return {"request": query}
+        if tool_name == "echo":
+            return {"query": query}
+        return {}
+
+    def run(self, query: str = "") -> str:
+        """tool_name이 지정되면 해당 MCP 도구를 호출하고, 아니면 도구 정보를 보여줍니다."""
+        if not self.tool_name:
+            return self.describe_one_tool(None)
+
+        # query가 없으면 호출 대신 스키마/설명을 보여줍니다.
+        if not query:
+            return self.describe_one_tool(self.tool_name)
+
+        tools = self.list_tools()
+        if not any(getattr(t, "name", None) == self.tool_name for t in tools):
+            return f"도구를 찾을 수 없습니다: {self.tool_name}\n\n" + self.describe_one_tool(None)
+
+        args = self._default_arguments_for_tool(self.tool_name, query)
+        try:
+            result = self.call_tool(self.tool_name, args)
+            return str(result)
+        except Exception as e:
+            return f"도구 호출 실패: {self.tool_name} :: {type(e).__name__}: {e}"
 
     def close(self) -> None:
         """리소스를 정리합니다."""
