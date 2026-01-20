@@ -16,9 +16,7 @@ from agents.agent import YamyamAgent  # noqa: E402
 
 class AgentState(TypedDict, total=False):
     """Minimal state schema for Studio."""
-
     query: str
-    output: str
 
 
 def _run(state: AgentState) -> AgentState:
