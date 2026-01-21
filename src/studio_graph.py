@@ -169,7 +169,7 @@ def _get_executor():
         _executor_cache = create_agent(
             llm,
             tools,
-            prompt=system_prompt_rendered,
+            system_prompt=system_prompt_rendered,
         )
         _executor_cache_key = cache_key
         return _executor_cache
