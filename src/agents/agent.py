@@ -4,8 +4,6 @@
 그 정보를 출력하는 최소 기능만 제공합니다.
 """
 
-import os
-import sys
 from typing import Any
 
 from dotenv import load_dotenv
@@ -49,49 +47,14 @@ class YamyamAgent:
         self._unused_model_name = model_name
 
         # MCP 클라이언트 초기화
-        if mcp_url:
+        try:
             # 이미 실행 중인 MCP 서버로 연결 (SSE/Streamable HTTP)
             self.mcp_client = MCPClientSync(
                 url=mcp_url,
                 url_transport=mcp_url_transport,
             )
-        else:
-            # 로컬 stdio 서버를 프로세스로 실행 (기본)
-            # 기본적으로는 현재 파이썬 인터프리터로 서버를 띄워,
-            # uv 설치/캐시 이슈에 덜 민감하게 합니다.
-            if mcp_command is None:
-                mcp_command = sys.executable
-
-            if mcp_args is None:
-                # 기본값: 이 레포의 `mcp/server.py` 실행
-                # uv run을 사용하면 venv/lock 환경에서 실행되어 의존성을 안정적으로 찾을 수 있음
-                if os.path.basename(mcp_command) == "uv":
-                    mcp_args = ["run", "python", "mcp/server.py"]
-                else:
-                    # python 계열 인터프리터라면 -u(버퍼링 비활성)로 stdio 프로토콜 안정성 향상
-                    mcp_args = ["-u", "mcp/server.py"]
-
-            # MCP 서버는 이 workspace 내부(`mcp/`)에서 관리한다고 가정
-            if mcp_cwd is None:
-                current_dir = os.path.dirname(os.path.abspath(__file__))
-                # src/yamyam_agent -> src -> (project root)
-                project_root = os.path.dirname(os.path.dirname(current_dir))
-                mcp_cwd = project_root
-
-            # PYTHONPATH에 src 디렉토리 추가 (`src/` 레이아웃 패키지를 찾기 위해)
-            mcp_src_path = os.path.join(mcp_cwd, "src")
-            env = os.environ.copy()
-            if "PYTHONPATH" in env:
-                env["PYTHONPATH"] = f"{mcp_src_path}:{env['PYTHONPATH']}"
-            else:
-                env["PYTHONPATH"] = mcp_src_path
-
-            self.mcp_client = MCPClientSync(
-                command=mcp_command,
-                args=mcp_args,
-                cwd=mcp_cwd,
-                env=env,
-            )
+        except Exception as e:
+            raise RuntimeError(f"MCP 서버 초기화 실패: {type(e).__name__}: {e}") from e
 
         self._cached_tools: list[Any] | None = None
 
