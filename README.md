@@ -31,6 +31,22 @@ cp .env.example .env
 export GEMINI_API_KEY=your_api_key_here
 ```
 
+### 모델/버전 관련 (404 NOT_FOUND 해결)
+
+`models/gemini-1.5-flash is not found for API version v1beta` 같은 에러가 나면,
+대부분 **모델 ID가 별칭(또는 폐기)** 이거나 **API 버전(v1beta)** 문제입니다.
+
+- 기본값은 `gemini-1.5-flash-latest`를 사용합니다.
+- 필요하면 아래 환경 변수를 설정하세요:
+
+```bash
+# (권장) v1로 강제 (일부 모델은 v1beta에서 404가 납니다)
+export YAMYAM_GOOGLE_API_VERSION=v1
+
+# 모델을 직접 지정 (예: ListModels 결과에서 generateContent 지원 모델로)
+export YAMYAM_LLM_MODEL=gemini-1.5-flash-latest
+```
+
 ## 사용법
 
 ### CLI 사용

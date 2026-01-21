@@ -10,6 +10,7 @@ import os
 import threading
 from typing import Any
 
+from google.genai.types import HttpOptions
 from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import StructuredTool
@@ -43,13 +44,29 @@ def _build_llm():
     gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 
     if gemini_key:
-        model = os.getenv("YAMYAM_LLM_MODEL", "gemini-1.5-flash")
+        # Use the canonical model ids.
+        # Bare aliases like "gemini-1.5-flash" can 404 depending on API version.
+        model = os.getenv("YAMYAM_LLM_MODEL", "gemini-1.5-flash-latest")
         temperature = float(os.getenv("YAMYAM_LLM_TEMPERATURE", "0"))
-        return ChatGoogleGenerativeAI(
-            model=model,
-            temperature=temperature,
-            google_api_key=gemini_key,
-        )
+        api_version = os.getenv("YAMYAM_GOOGLE_API_VERSION", "v1").strip() or "v1"
+
+        # langchain-google-genai v4+ uses google-genai underneath and accepts `client_args`.
+        # We force v1 by default because some Gemini models are not available on v1beta.
+        try:
+            return ChatGoogleGenerativeAI(
+                model=model,
+                temperature=temperature,
+                google_api_key=gemini_key,
+                client_args={"http_options": HttpOptions(api_version=api_version)},
+            )
+        except TypeError:
+            # Backward-compat fallback for older langchain-google-genai which may not
+            # support `client_args`.
+            return ChatGoogleGenerativeAI(
+                model=model,
+                temperature=temperature,
+                google_api_key=gemini_key,
+            )
 
     raise RuntimeError("No LLM API key found. Set GEMINI_API_KEY (recommended).")
 
