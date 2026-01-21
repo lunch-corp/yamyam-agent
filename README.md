@@ -104,34 +104,6 @@ uv run langgraph dev --port 8000
 
 이제 Studio에서 Base URL에 `http://127.0.0.1:8000`을 넣으면 연결됩니다.
 
-## 프로젝트 구조
-
-```
-yamyam-agent/
-├── mcp/
-│   └── server.py              # FastMCP 기반 MCP 서버 (stdio)
-├── src/
-│   └── yamyam_agent/
-│       ├── __init__.py
-│       ├── agent.py          # YamyamAgent 클래스
-│       ├── mcp_client.py     # MCP 클라이언트 래퍼
-│       ├── tool_adapter.py   # MCP 도구를 LangChain 도구로 변환
-│       ├── cli.py            # CLI 인터페이스
-│       └── prompts/          # 프롬프트 모듈
-│           ├── __init__.py
-│           ├── system_prompt.py
-│           └── system_prompt.txt
-├── tests/                    # pytest 테스트
-│   ├── __init__.py
-│   ├── test_prompts.py       # 프롬프트 테스트
-│   └── test_agent_integration.py  # Agent 통합 테스트
-├── test_agent.py             # 통합 테스트 스크립트
-├── test_prompt_loader.py     # 프롬프트 로더 테스트 스크립트
-├── pytest.ini                # pytest 설정
-├── pyproject.toml
-└── README.md
-```
-
 ## 요구사항
 
 - Python 3.11 이상
