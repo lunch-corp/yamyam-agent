@@ -61,7 +61,7 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 [tool.ruff.lint.isort]
-known-first-party = ["agents", "clients", "mcp_tools", "utils"]
+known-first-party = ["clients", "mcp_tools", "utils"]
 
 [tool.black]
 line-length = 100
@@ -70,9 +70,9 @@ target-version = ["py311"]
 [tool.isort]
 profile = "black"
 line_length = 100
-known_first_party = ["agents", "clients", "mcp_tools", "utils"]
+known_first_party = ["clients", "mcp_tools", "utils"]
 
 [tool.hatch.build.targets.wheel]
 # `src/yamyam_agent/` 패키지를 제거하면서 자동 패키지 탐지가 실패해
 # `uv run`이 editable build 단계에서 죽습니다. 빌드에 포함할 패키지를 명시합니다.
-packages = ["src/agents", "src/clients", "src/utils"]
+packages = ["src/clients", "src/utils"]

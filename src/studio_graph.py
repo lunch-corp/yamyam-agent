@@ -7,6 +7,7 @@ This graph exposes an LLM agent that can call MCP tools.
 from __future__ import annotations
 
 import os
+import sys
 import threading
 from typing import Any
 
@@ -18,7 +19,7 @@ from langgraph.graph import END, StateGraph
 from pydantic import Field, create_model
 from typing_extensions import TypedDict
 
-from agents.agent import YamyamAgent
+from clients.mcp_client import MCPClientSync
 from utils.prompt_loader import get_system_prompt
 
 _agent_lock = threading.Lock()
@@ -109,11 +110,29 @@ def _json_schema_to_pydantic_model(tool_name: str, schema: dict[str, Any]):
     return create_model(f"MCP_{tool_name}_Args", **fields)  # type: ignore[call-arg]
 
 
-def _build_mcp_langchain_tools(mcp_agent: YamyamAgent):
+def _build_mcp_client() -> MCPClientSync:
+    """Create an MCP client (prefer long-running HTTP/SSE server)."""
+    mcp_url = os.getenv("YAMYAM_MCP_URL")
+    mcp_url_transport = os.getenv("YAMYAM_MCP_URL_TRANSPORT")  # "sse" | "streamable-http"
+
+    if mcp_url:
+        return MCPClientSync(url=mcp_url, url_transport=mcp_url_transport)
+
+    # Fallback: spawn local FastMCP server via stdio. This is mainly for dev/demo.
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    server_script = os.path.join(repo_root, "mcp", "server.py")
+    return MCPClientSync(
+        command=sys.executable,
+        args=[server_script, "--transport", "stdio"],
+        cwd=repo_root,
+    )
+
+
+def _build_mcp_langchain_tools(mcp_client: MCPClientSync):
     """Wrap MCP tools as LangChain StructuredTool list."""
 
     tools = []
-    for t in mcp_agent.list_tools():
+    for t in mcp_client.list_tools():
         name = getattr(t, "name", None) or "unknown"
         description = getattr(t, "description", "") or ""
         input_schema = (
@@ -126,7 +145,7 @@ def _build_mcp_langchain_tools(mcp_agent: YamyamAgent):
 
         def _call_tool(*, _tool_name: str = name, **kwargs: Any) -> str:
             try:
-                return str(mcp_agent.call_tool(_tool_name, kwargs))
+                return str(mcp_client.call_tool(_tool_name, kwargs))
             except Exception as e:  # pragma: no cover
                 return f"MCP tool call failed: {_tool_name} :: {type(e).__name__}: {e}"
 
@@ -163,8 +182,8 @@ def _get_executor():
             return _executor_cache
 
         llm = _build_llm()
-        mcp_agent = YamyamAgent(mcp_url=mcp_url, mcp_url_transport=mcp_url_transport)
-        tools = _build_mcp_langchain_tools(mcp_agent)
+        mcp_client = _build_mcp_client()
+        tools = _build_mcp_langchain_tools(mcp_client)
 
         tool_names = [getattr(t, "name", "unknown") for t in tools]
         tool_names_str = ", ".join(tool_names)

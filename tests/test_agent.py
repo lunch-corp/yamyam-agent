@@ -1,44 +1,29 @@
-"""간단한 테스트 스크립트."""
+"""간단한 MCP 클라이언트 테스트."""
 
-from dotenv import load_dotenv
+import os
+import sys
+from pathlib import Path
 
-from yamyam_agent.agent import YamyamAgent
-
-# 환경 변수 로드
-load_dotenv()
-
-
-def test_agent() -> None:
-    """Agent 기본 테스트."""
-    print("Yamyam Agent 테스트 시작...\n")
-
-    try:
-        # Agent 생성
-        agent = YamyamAgent()
-
-        # 테스트 쿼리
-        test_queries = [
-            "안녕하세요!",
-            "echo 도구를 사용해서 'Hello, World!'를 출력해주세요.",
-        ]
-
-        for query in test_queries:
-            print(f"질문: {query}")
-            print("\n답변:")
-            response = agent.run(query)
-            print(response)
-            print("\n" + "=" * 50 + "\n")
-
-        # 리소스 정리
-        agent.close()
-        print("테스트 완료!")
-
-    except Exception as e:
-        print(f"테스트 실패: {e}")
-        import traceback
-
-        traceback.print_exc()
+from clients.mcp_client import MCPClientSync
 
 
-if __name__ == "__main__":
-    test_agent()
+def test_mcp_stdio_echo() -> None:
+    """로컬 FastMCP 서버(stdio)로 echo 호출이 되는지 테스트."""
+    repo_root = Path(__file__).resolve().parents[1]
+    server_script = repo_root / "mcp" / "server.py"
+
+    client = MCPClientSync(
+        command=sys.executable,
+        args=[str(server_script), "--transport", "stdio"],
+        cwd=str(repo_root),
+        env={k: v for k, v in os.environ.items() if isinstance(v, str)},
+    )
+
+    tools = client.list_tools()
+    tool_names = {getattr(t, "name", "") for t in tools}
+    assert "echo" in tool_names
+
+    out = client.call_tool("echo", {"query": "Hello, World!"})
+    assert out == "Hello, World!"
+
+    client.close()
