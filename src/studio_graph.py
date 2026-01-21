@@ -10,6 +10,8 @@ import os
 import threading
 from typing import Any
 
+from langchain.agents import create_agent
+from langchain_core.messages import HumanMessage
 from langchain_core.tools import StructuredTool
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import END, StateGraph
@@ -133,7 +135,7 @@ def _build_mcp_langchain_tools(mcp_agent: YamyamAgent):
 
 
 def _get_executor():
-    """Lazy init + cache an agent executor (LLM decides tool calls)."""
+    """Lazy init + cache a tool-calling ReAct agent graph."""
     global _executor_cache, _executor_cache_key
 
     # Optional: point the agent to a long-running MCP server (HTTP/SSE).
@@ -157,17 +159,17 @@ def _get_executor():
         mcp_agent = YamyamAgent(mcp_url=mcp_url, mcp_url_transport=mcp_url_transport)
         tools = _build_mcp_langchain_tools(mcp_agent)
 
-        from langchain.agents import AgentExecutor, create_react_agent
-        from langchain_core.prompts import PromptTemplate
+        tool_names = [getattr(t, "name", "unknown") for t in tools]
+        tool_names_str = ", ".join(tool_names)
+        if "{tool_names}" in system_prompt:
+            system_prompt_rendered = system_prompt.replace("{tool_names}", tool_names_str)
+        else:
+            system_prompt_rendered = system_prompt + f"\n\n도구 이름: {tool_names_str}\n"
 
-        prompt = PromptTemplate.from_template(system_prompt)
-        agent = create_react_agent(llm, tools, prompt)
-
-        _executor_cache = AgentExecutor(
-            agent=agent,
-            tools=tools,
-            verbose=os.getenv("YAMYAM_AGENT_VERBOSE", "").lower() in ("1", "true", "yes"),
-            handle_parsing_errors=True,
+        _executor_cache = create_agent(
+            llm,
+            tools,
+            prompt=system_prompt_rendered,
         )
         _executor_cache_key = cache_key
         return _executor_cache
@@ -177,9 +179,15 @@ def _run(state: AgentInput) -> AgentOutput:
     query = state.get("query", "")
 
     executor = _get_executor()
-    result = executor.invoke({"input": query})
-    output = result.get("output") if isinstance(result, dict) else str(result)
-    return {"output": output or ""}
+    result = executor.invoke({"messages": [HumanMessage(content=query)]})
+
+    if isinstance(result, dict) and result.get("messages"):
+        last = result["messages"][-1]
+        content = getattr(last, "content", None)
+        output = str(content) if content is not None else str(last)
+        return {"output": output or ""}
+
+    return {"output": str(result) or ""}
 
 
 _builder: StateGraph = StateGraph(AgentInput, input_schema=AgentInput, output_schema=AgentOutput)
