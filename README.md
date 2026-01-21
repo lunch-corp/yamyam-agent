@@ -42,53 +42,6 @@ export GEMINI_API_KEY=your_api_key_here
 uv run python mcp/server.py --transport sse --host 127.0.0.1 --port 8001
 ```
 
-#### 대화형 모드
-
-```bash
-uv run yamyam-agent --mcp-url "http://127.0.0.1:8001/sse"
-```
-
-#### 단일 쿼리 실행
-
-```bash
-uv run yamyam-agent --mcp-url "http://127.0.0.1:8001/sse" --query "echo 도구를 사용해서 'Hello, World!'를 출력해주세요"
-```
-
-#### (옵션) CLI가 MCP 서버를 직접 띄우기 (stdio)
-
-```bash
-uv run yamyam-agent --spawn-mcp --query "안녕하세요!"
-```
-
-#### 옵션
-
-- `--api-key`: Gemini API 키 (없으면 환경 변수 사용)
-- `--mcp-url`: 이미 실행 중인 MCP 서버 URL (예: `http://127.0.0.1:8001/sse` 또는 `.../mcp`)
-- `--mcp-url-transport`: 전송 방식 (sse | streamable-http). 미지정 시 URL로 추정
-- `--spawn-mcp`: CLI가 MCP 서버를 직접 실행(stdio)
-- `--mcp-command`: (spawn 시) MCP 서버 실행 명령어
-- `--mcp-args`: (spawn 시) MCP 서버 실행 인자
-- `--model`: 사용할 Gemini 모델 (기본값: gemini-2.5-flash)
-- `--query`: 실행할 쿼리 (없으면 대화형 모드)
-
-### Python 코드에서 사용
-
-```python
-from yamyam_agent import YamyamAgent
-
-# Agent 생성
-agent = YamyamAgent(
-    # (참고) 현재 구현은 LLM 추론 대신 MCP 도구 정보를 보여주는 최소 기능입니다.
-)
-
-# 쿼리 실행
-response = agent.run("echo 도구를 사용해서 'Hello'를 출력해주세요")
-print(response)
-
-# 리소스 정리
-agent.close()
-```
-
 ### 테스트
 
 #### 프롬프트 로더 테스트 (간단)
@@ -184,12 +137,6 @@ yamyam-agent/
 - Python 3.11 이상
 - Gemini API 키
 
-**참고**: 기본 MCP 서버(`mcp/server.py`) 대신 다른 MCP 서버를 쓰려면 `--mcp-command` / `--mcp-args` 옵션으로 실행 명령을 바꿀 수 있습니다. 예를 들어:
-
-```bash
-# 또는 절대 경로로 Python 스크립트 실행
-uv run yamyam-agent --mcp-command python --mcp-args /path/to/any-mcp-server.py
-```
 
 ## 라이선스
 
