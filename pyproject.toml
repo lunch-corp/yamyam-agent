@@ -33,9 +33,9 @@ dev = [
     "pytest-mock>=3.11.0",
 ]
 studio = [
-    "langgraph",
-    "langgraph-cli[inmem]",
-    "langsmith",
+    "langgraph==1.0.5",
+    "langgraph-cli[inmem]==0.4.11",
+    "langsmith==0.5.1",
 ]
 
 [tool.ruff]

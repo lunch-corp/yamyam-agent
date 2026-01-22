@@ -39,7 +39,8 @@ class MCPClientWrapper:
         self.url_transport = url_transport
         self.cwd = cwd
         self.env = env
-        # 각 호출마다 새로운 연결을 생성합니다(단순/안전한 방식).
+        # 컨텍스트 매니저를 미리 생성하여 재사용합니다.
+        self.client = Client(self._client_target())
 
     def _client_target(self) -> Any:
         if self.url:
@@ -69,7 +70,7 @@ class MCPClientWrapper:
             도구 목록
         """
         try:
-            async with Client(self._client_target()) as client:
+            async with self.client as client:
                 return await client.list_tools()
         except Exception as e:  # pragma: no cover - message enrichment
             raise RuntimeError(f"{self._format_target()} :: {type(e).__name__}: {e!r}") from e
@@ -86,7 +87,7 @@ class MCPClientWrapper:
             도구 실행 결과
         """
         try:
-            async with Client(self._client_target()) as client:
+            async with self.client as client:
                 result = await client.call_tool(name, arguments or {})
                 content = getattr(result, "content", None)
                 if not content:
