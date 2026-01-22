@@ -39,9 +39,8 @@ class AgentOutput(TypedDict, total=False):
     output: str
 
 
-async def _build_llm(model_config: dict[str, Any] | None = None, model_name: str | None = None):
+def _build_llm():
     """Create an LLM for the agent (OpenAI only)."""
-
     openai_key = os.getenv("OPENAI_API_KEY")
     if not openai_key:
         raise RuntimeError("OpenAI 모델을 사용하려면 OPENAI_API_KEY 환경 변수를 설정하세요.")
@@ -171,7 +170,7 @@ async def _get_executor():
         if _executor_cache is not None and _executor_cache_key == cache_key:
             return _executor_cache
 
-        llm = await _build_llm()
+        llm = _build_llm()
         mcp_client = _build_mcp_client()
         tools = await _build_mcp_langchain_tools(mcp_client)
 
