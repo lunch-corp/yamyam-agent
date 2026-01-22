@@ -15,7 +15,8 @@ def get_system_prompt() -> str:
     # 프로젝트 루트의 prompts/system.yaml 파일 경로
     current_file = Path(__file__)
     # src/yamyam_agent/utils/prompt_loader.py -> prompts/system.yaml
-    project_root = current_file.parent.parent.parent.parent
+    # src/utils/prompt_loader.py -> (project root)
+    project_root = current_file.parent.parent.parent
     yaml_file = project_root / "prompts" / "system.yaml"
 
     if not yaml_file.exists():
@@ -35,7 +36,7 @@ def get_user_prompt() -> str:
     """
     # 프로젝트 루트의 prompts/user.yaml 파일 경로
     current_file = Path(__file__)
-    project_root = current_file.parent.parent.parent.parent
+    project_root = current_file.parent.parent.parent
     yaml_file = project_root / "prompts" / "user.yaml"
 
     if not yaml_file.exists():
