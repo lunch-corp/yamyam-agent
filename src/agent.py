@@ -15,11 +15,13 @@ from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import StructuredTool
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
 from pydantic import Field, create_model
 from typing_extensions import TypedDict
 
 from clients.mcp_client import MCPClientWrapper
+from utils.config import get_model_config
 from utils.prompt_loader import get_system_prompt
 
 _agent_lock = threading.Lock()
@@ -39,27 +41,58 @@ class AgentOutput(TypedDict, total=False):
     output: str
 
 
-def _build_llm():
-    """Create an LLM for the agent (Gemini preferred)."""
+async def _build_llm(
+    model_config: dict[str, Any] | None = None, model_name: str | None = None
+):
+    """Create an LLM for the agent (supports OpenAI and Gemini)."""
+    # YAML 파일에서 설정 로드 (파일명에서 모델 이름 추출)
+    if model_config is None or model_name is None:
+        model_config, model_name = await get_model_config()
+
+    # Temperature: YAML 설정 > 기본값
+    temperature = model_config.get("temperature")
+
+    # OpenAI 모델 사용
+    model_lower = model_name.lower()
+    if (
+        model_lower.startswith("gpt-")
+        or model_lower.startswith("o1-")
+        or model_lower.startswith("o3-")
+    ):
+        openai_key = os.getenv("OPENAI_API_KEY")
+
+        if not openai_key:
+            raise RuntimeError("OpenAI 모델을 사용하려면 OPENAI_API_KEY 환경 변수를 설정하세요.")
+
+        # YAML 설정에 모델 이름과 API 키 추가
+        openai_config = {**model_config, "model": model_name, "api_key": openai_key}
+        return ChatOpenAI(**openai_config)
+
+    # Gemini 모델 사용
     gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-
     if gemini_key:
-        # langchain-google-genai v4+ uses google-genai underneath and accepts `client_args`.
-        # We force v1 by default because some Gemini models are not available on v1beta.
-        try:
-            return ChatGoogleGenerativeAI(
-                model="gemini-2.5-flash", temperature=0.1, google_api_key=gemini_key
-            )
-        except TypeError:
-            # Backward-compat fallback for older langchain-google-genai which may not
-            # support `client_args`.
-            return ChatGoogleGenerativeAI(
-                model="gemini-2.5-flash",
-                temperature=0.1,
-                google_api_key=gemini_key,
-            )
+        # 모델 이름이 지정되지 않았거나 gemini로 시작하는 경우
+        if not model_name or model_name.lower().startswith("gemini-"):
+            model = model_name if model_name else "gemini-2.5-flash"
+            # langchain-google-genai v4+ uses google-genai underneath and accepts `client_args`.
+            # We force v1 by default because some Gemini models are not available on v1beta.
+            try:
+                return ChatGoogleGenerativeAI(
+                    model=model, temperature=temperature, google_api_key=gemini_key
+                )
+            except TypeError:
+                # Backward-compat fallback for older langchain-google-genai which may not
+                # support `client_args`.
+                return ChatGoogleGenerativeAI(
+                    model=model,
+                    temperature=temperature,
+                    google_api_key=gemini_key,
+                )
 
-    raise RuntimeError("No LLM API key found. Set GEMINI_API_KEY (recommended).")
+    raise RuntimeError(
+        "No LLM API key found. Set OPENAI_API_KEY (for OpenAI models) or "
+        "GEMINI_API_KEY (for Gemini models, recommended)."
+    )
 
 
 def _json_schema_to_pydantic_model(tool_name: str, schema: dict[str, Any]):
@@ -177,15 +210,17 @@ async def _get_executor():
     if "{tool_names}" not in system_prompt:
         system_prompt = system_prompt + "\n\n도구 이름: {tool_names}\n"
 
-    model_name = os.getenv("YAMYAM_LLM_MODEL")
-    temperature = os.getenv("YAMYAM_LLM_TEMPERATURE")
+    # YAML 설정을 캐시 키에 포함
+    model_config, model_name = await get_model_config()
+    temperature = model_config.get("temperature")
 
     cache_key = (mcp_url, mcp_url_transport, system_prompt, model_name, temperature)
     with _agent_lock:
         if _executor_cache is not None and _executor_cache_key == cache_key:
             return _executor_cache
 
-        llm = _build_llm()
+        # 이미 로드한 설정을 _build_llm에 전달하여 중복 호출 방지
+        llm = await _build_llm(model_config, model_name)
         mcp_client = _build_mcp_client()
         tools = await _build_mcp_langchain_tools(mcp_client)
 
