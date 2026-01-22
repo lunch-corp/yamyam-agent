@@ -19,7 +19,7 @@ from langgraph.graph import END, StateGraph
 from pydantic import Field, create_model
 from typing_extensions import TypedDict
 
-from clients.mcp_client import MCPClientSync
+from clients.mcp_client import MCPClientWrapper
 from utils.prompt_loader import get_system_prompt
 
 _agent_lock = threading.Lock()
@@ -110,29 +110,29 @@ def _json_schema_to_pydantic_model(tool_name: str, schema: dict[str, Any]):
     return create_model(f"MCP_{tool_name}_Args", **fields)  # type: ignore[call-arg]
 
 
-def _build_mcp_client() -> MCPClientSync:
+def _build_mcp_client() -> MCPClientWrapper:
     """Create an MCP client (prefer long-running HTTP/SSE server)."""
     mcp_url = os.getenv("YAMYAM_MCP_URL")
     mcp_url_transport = os.getenv("YAMYAM_MCP_URL_TRANSPORT")  # "sse" | "streamable-http"
 
     if mcp_url:
-        return MCPClientSync(url=mcp_url, url_transport=mcp_url_transport)
+        return MCPClientWrapper(url=mcp_url, url_transport=mcp_url_transport)
 
     # Fallback: spawn local FastMCP server via stdio. This is mainly for dev/demo.
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     server_script = os.path.join(repo_root, "mcp", "server.py")
-    return MCPClientSync(
+    return MCPClientWrapper(
         command=sys.executable,
         args=[server_script, "--transport", "stdio"],
         cwd=repo_root,
     )
 
 
-def _build_mcp_langchain_tools(mcp_client: MCPClientSync):
+async def _build_mcp_langchain_tools(mcp_client: MCPClientWrapper):
     """Wrap MCP tools as LangChain StructuredTool list."""
 
     tools = []
-    for t in mcp_client.list_tools():
+    for t in await mcp_client.list_tools():
         name = getattr(t, "name", None) or "unknown"
         description = getattr(t, "description", "") or ""
         input_schema = (
@@ -143,15 +143,19 @@ def _build_mcp_langchain_tools(mcp_client: MCPClientSync):
         )
         args_schema = _json_schema_to_pydantic_model(name, input_schema)
 
-        def _call_tool(*, _tool_name: str = name, **kwargs: Any) -> str:
-            try:
-                return str(mcp_client.call_tool(_tool_name, kwargs))
-            except Exception as e:  # pragma: no cover
-                return f"MCP tool call failed: {_tool_name} :: {type(e).__name__}: {e}"
+        # 클로저 문제 해결: tool_name을 명시적으로 바인딩
+        def _make_call_tool(tool_name: str):
+            async def _call_tool(**kwargs: Any) -> str:
+                try:
+                    return str(await mcp_client.call_tool(tool_name, kwargs))
+                except Exception as e:  # pragma: no cover
+                    return f"MCP tool call failed: {tool_name} :: {type(e).__name__}: {e}"
+
+            return _call_tool
 
         tools.append(
             StructuredTool.from_function(
-                func=_call_tool,
+                func=_make_call_tool(name),
                 name=name,
                 description=description,
                 args_schema=args_schema,
@@ -160,7 +164,7 @@ def _build_mcp_langchain_tools(mcp_client: MCPClientSync):
     return tools
 
 
-def _get_executor():
+async def _get_executor():
     """Lazy init + cache a tool-calling ReAct agent graph."""
     global _executor_cache, _executor_cache_key
 
@@ -183,7 +187,7 @@ def _get_executor():
 
         llm = _build_llm()
         mcp_client = _build_mcp_client()
-        tools = _build_mcp_langchain_tools(mcp_client)
+        tools = await _build_mcp_langchain_tools(mcp_client)
 
         tool_names = [getattr(t, "name", "unknown") for t in tools]
         tool_names_str = ", ".join(tool_names)
@@ -201,11 +205,11 @@ def _get_executor():
         return _executor_cache
 
 
-def _run(state: AgentInput) -> AgentOutput:
+async def _run(state: AgentInput) -> AgentOutput:
     query = state.get("query", "")
 
-    executor = _get_executor()
-    result = executor.invoke({"messages": [HumanMessage(content=query)]})
+    executor = await _get_executor()
+    result = await executor.ainvoke({"messages": [HumanMessage(content=query)]})
 
     if isinstance(result, dict) and result.get("messages"):
         last = result["messages"][-1]
