@@ -14,7 +14,7 @@ from typing import Any
 from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import StructuredTool
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
 from pydantic import Field, create_model
 from typing_extensions import TypedDict
@@ -40,26 +40,14 @@ class AgentOutput(TypedDict, total=False):
 
 
 def _build_llm():
-    """Create an LLM for the agent (Gemini preferred)."""
-    gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    """Create an LLM for the agent (OpenAI only)."""
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if not openai_key:
+        raise RuntimeError("OpenAI 모델을 사용하려면 OPENAI_API_KEY 환경 변수를 설정하세요.")
 
-    if gemini_key:
-        # langchain-google-genai v4+ uses google-genai underneath and accepts `client_args`.
-        # We force v1 by default because some Gemini models are not available on v1beta.
-        try:
-            return ChatGoogleGenerativeAI(
-                model="gemini-2.5-flash", temperature=0.1, google_api_key=gemini_key
-            )
-        except TypeError:
-            # Backward-compat fallback for older langchain-google-genai which may not
-            # support `client_args`.
-            return ChatGoogleGenerativeAI(
-                model="gemini-2.5-flash",
-                temperature=0.1,
-                google_api_key=gemini_key,
-            )
-
-    raise RuntimeError("No LLM API key found. Set GEMINI_API_KEY (recommended).")
+    # YAML 설정에 모델 이름과 API 키 추가
+    openai_config = {"model": "gpt-4o-mini", "api_key": openai_key}
+    return ChatOpenAI(**openai_config)
 
 
 def _json_schema_to_pydantic_model(tool_name: str, schema: dict[str, Any]):
@@ -177,10 +165,7 @@ async def _get_executor():
     if "{tool_names}" not in system_prompt:
         system_prompt = system_prompt + "\n\n도구 이름: {tool_names}\n"
 
-    model_name = os.getenv("YAMYAM_LLM_MODEL")
-    temperature = os.getenv("YAMYAM_LLM_TEMPERATURE")
-
-    cache_key = (mcp_url, mcp_url_transport, system_prompt, model_name, temperature)
+    cache_key = (mcp_url, mcp_url_transport, system_prompt)
     with _agent_lock:
         if _executor_cache is not None and _executor_cache_key == cache_key:
             return _executor_cache
