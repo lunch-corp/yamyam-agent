@@ -61,7 +61,7 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 [tool.ruff.lint.isort]
-known-first-party = ["clients", "mcp_tools", "utils"]
+known-first-party = ["mcp", "clients", "tools", "resources", "utils", "registry", "info", "menu"]
 
 [tool.black]
 line-length = 100
@@ -70,7 +70,7 @@ target-version = ["py311"]
 [tool.isort]
 profile = "black"
 line_length = 100
-known_first_party = ["clients", "mcp_tools", "utils"]
+known_first_party = ["clients", "mcp", "tools", "resources", "utils", "registry", "info", "menu"]
 
 [tool.hatch.build.targets.wheel]
 # `src/yamyam_agent/` 패키지를 제거하면서 자동 패키지 탐지가 실패해

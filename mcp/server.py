@@ -1,14 +1,15 @@
 import argparse
 
 from fastmcp import FastMCP
-from tools import registry, resources
+
+from registry import register_resources, register_tools
 
 # FastMCP 서버 인스턴스 생성
 mcp = FastMCP("yamyam-mcp")
 
 # 도구 및 리소스 등록
-registry.register_tools(mcp)
-resources.register_resources(mcp)
+register_tools(mcp)
+register_resources(mcp)
 
 
 def main() -> None:
