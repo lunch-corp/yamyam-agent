@@ -1,8 +1,15 @@
 import argparse
+import os
 
+from dotenv import load_dotenv
 from fastmcp import FastMCP
 
 from registry import register_resources, register_tools
+
+# MCP 서버가 별도 프로세스로 실행될 때도 .env 로드 (YAMYAM_OPS_API_URL 등)
+_repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+load_dotenv(os.path.join(_repo_root, ".env"))
+
 
 # FastMCP 서버 인스턴스 생성
 mcp = FastMCP("yamyam-mcp")
