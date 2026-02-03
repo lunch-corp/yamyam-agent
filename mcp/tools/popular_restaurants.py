@@ -82,7 +82,7 @@ def get_popular_restaurants(
     # FilteredDinerResponse는 id, diner_idx, distance 만 반환 → 각 id로 상세 조회
     details: list[dict] = []
     for item in data[:limit]:
-        diner_id = item.get("id")
+        diner_id = item.get("diner_idx")
         if not diner_id:
             continue
         detail_url = f"{base_url}/kakao/diners/{diner_id}"
@@ -92,7 +92,7 @@ def get_popular_restaurants(
                 details.append(detail)
         except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError):
             # 상세 조회 실패 시 id만으로 한 줄 추가
-            details.append({"id": diner_id, "diner_name": "(상세 조회 실패)"})
+            details.append({"diner_idx": diner_id, "diner_name": "(상세 조회 실패)"})
 
     lines = [f"인기 맛집 {len(details)}곳 (인기도 순):"]
     for i, d in enumerate(details, 1):
