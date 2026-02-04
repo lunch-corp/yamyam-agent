@@ -6,13 +6,14 @@ This graph exposes an LLM agent that can call MCP tools.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 import threading
 from typing import Any
 
 from langchain.agents import create_agent
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
@@ -131,15 +132,29 @@ async def _build_mcp_langchain_tools(mcp_client: MCPClientWrapper):
         )
         args_schema = _json_schema_to_pydantic_model(name, input_schema)
 
-        # 클로저 문제 해결: tool_name을 명시적으로 바인딩
+        # 동기 함수로 감싸서 에이전트가 await 안 해도 도구 결과가 문자열로 들어가게 함
         def _make_call_tool(tool_name: str):
-            async def _call_tool(**kwargs: Any) -> str:
+            async def _call_async(**kwargs: Any) -> str:
                 try:
                     return str(await mcp_client.call_tool(tool_name, kwargs))
                 except Exception as e:  # pragma: no cover
                     return f"MCP tool call failed: {tool_name} :: {type(e).__name__}: {e}"
 
-            return _call_tool
+            def _call_sync(**kwargs: Any) -> str:
+                try:
+                    return asyncio.run(_call_async(**kwargs))
+                except RuntimeError as e:
+                    if "cannot be called from a running event loop" in str(e):
+                        loop = asyncio.new_event_loop()
+                        try:
+                            return loop.run_until_complete(_call_async(**kwargs))
+                        finally:
+                            loop.close()
+                    raise
+                except Exception as e:  # pragma: no cover
+                    return f"MCP tool call failed: {tool_name} :: {type(e).__name__}: {e}"
+
+            return _call_sync
 
         tools.append(
             StructuredTool.from_function(
@@ -190,6 +205,63 @@ async def _get_executor():
         return _executor_cache
 
 
+def _message_content_to_str(m: Any) -> str:
+    """메시지 content를 문자열로 추출 (다양한 형식 지원)."""
+    raw = getattr(m, "content", None)
+    if raw is None:
+        return ""
+    if isinstance(raw, str):
+        return raw.strip()
+    if isinstance(raw, list):
+        parts = []
+        for item in raw:
+            if isinstance(item, dict):
+                parts.append(
+                    item.get("text") or item.get("content") or str(item)
+                )
+            else:
+                parts.append(str(item))
+        return " ".join(str(p).strip() for p in parts if p).strip()
+    return str(raw).strip()
+
+
+def _last_tool_error(messages: list) -> str | None:
+    """마지막 도구 호출 결과 중 오류로 보이는 내용을 반환. 없으면 None."""
+    err_keywords = (
+        "오류",
+        "연결 실패",
+        "연결 오류",
+        "API 오류",
+        "API 연결",
+        "MCP tool call failed",
+        "failed",
+        "Error",
+        "timeout",
+        "Timeout",
+        "YAMYAM_OPS_API_URL",
+    )
+    # 1) ToolMessage / type=="tool" 메시지에서 오류 찾기
+    for m in reversed(messages):
+        name = getattr(m, "type", None) or type(m).__name__
+        is_tool = (
+            name == "tool"
+            or name == "ToolMessage"
+            or "tool" in str(name).lower()
+            or isinstance(m, ToolMessage)
+        )
+        if not is_tool:
+            continue
+        s = _message_content_to_str(m)
+        if s and any(k in s for k in err_keywords):
+            return s
+    # 2) 위에서 못 찾으면 마지막 제외한 메시지에서 오류 문구 검사 (도구 결과가 다른 타입일 수 있음)
+    for m in list(reversed(messages))[1:]:
+        s = _message_content_to_str(m)
+        if s and any(k in s for k in err_keywords):
+            return s
+    return None
+
+
 async def _run(state: AgentInput) -> AgentOutput:
     query = state.get("query", "")
 
@@ -197,9 +269,31 @@ async def _run(state: AgentInput) -> AgentOutput:
     result = await executor.ainvoke({"messages": [HumanMessage(content=query)]})
 
     if isinstance(result, dict) and result.get("messages"):
-        last = result["messages"][-1]
-        content = getattr(last, "content", None)
-        output = str(content) if content is not None else str(last)
+        messages = result["messages"]
+        last = messages[-1]
+        output = _message_content_to_str(last) or str(last)
+
+        # 도구 오류가 있으면 맨 앞에 노출
+        tool_err = _last_tool_error(messages)
+        if tool_err and tool_err not in output:
+            output = "**[오류]**\n" + tool_err + "\n\n---\n" + (output or "")
+        elif output and ("문제가 발생" in output or "다시 시도" in output):
+            # 마지막 AI 직전 메시지 = 도구 결과일 가능성 높음 → 그대로 맨 앞에 붙임
+            if len(messages) >= 2:
+                prev = _message_content_to_str(messages[-2])
+                if (
+                    prev
+                    and prev not in output
+                    and "coroutine object" not in prev
+                ):
+                    output = "**[도구 반환 내용]**\n" + prev + "\n\n---\n" + output
+            if "**[도구 반환 내용]**" not in output:
+                output = (
+                    "**[도구 결과를 파싱하지 못함]** 아래가 AI 답변입니다. "
+                    "실제 오류는 MCP/도구 로그에서 확인하세요.\n\n---\n"
+                    + output
+                )
+
         return {"output": output or ""}
 
     return {"output": str(result) or ""}
