@@ -15,6 +15,7 @@ from typing import Any
 from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import StructuredTool
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
 from pydantic import Field, create_model
@@ -47,9 +48,6 @@ def _build_llm():
     openai_key = os.getenv("OPENAI_API_KEY")
     
     if gemini_key:
-        # Gemini 사용
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        
         return ChatGoogleGenerativeAI(
             model="gemini-2.5-flash",
             google_api_key=gemini_key,
