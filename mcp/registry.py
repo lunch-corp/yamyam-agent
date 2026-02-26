@@ -3,7 +3,7 @@
 from fastmcp import FastMCP
 
 from resources import info
-from tools import menu, popular_restaurants
+from tools import menu, popular_restaurants, weather
 
 
 def register_resources(mcp: FastMCP) -> None:
@@ -17,3 +17,4 @@ def register_tools(mcp: FastMCP) -> None:
 
     mcp.tool()(menu.recommend_menu)
     mcp.tool()(popular_restaurants.get_popular_restaurants)
+    mcp.tool()(weather.get_weather)

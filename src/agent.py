@@ -41,13 +41,29 @@ class AgentOutput(TypedDict, total=False):
 
 
 def _build_llm():
-    """Create an LLM for the agent (OpenAI only)."""
+    """Create an LLM for the agent (supports both OpenAI and Gemini)."""
+    # Gemini API 키 확인 (우선순위)
+    gemini_key = os.getenv("GEMINI_API_KEY")
     openai_key = os.getenv("OPENAI_API_KEY")
-    if not openai_key:
-        raise RuntimeError("OpenAI 모델을 사용하려면 OPENAI_API_KEY 환경 변수를 설정하세요.")
-
-    # YAML 설정에 모델 이름과 API 키 추가
-    openai_config = {"model": "gpt-4o-mini", "api_key": openai_key}
+    
+    if gemini_key:
+        # Gemini 사용
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        
+        return ChatGoogleGenerativeAI(
+            model="gemini-2.5-flash",
+            google_api_key=gemini_key,
+            temperature=0.7,
+        )
+    elif openai_key:
+        # OpenAI 사용
+        openai_config = {"model": "gpt-4o-mini", "api_key": openai_key}
+        return ChatOpenAI(**openai_config)
+    else:
+        raise RuntimeError(
+            "GEMINI_API_KEY 또는 OPENAI_API_KEY 환경 변수를 설정하세요.\n"
+            "Gemini API 키는 https://aistudio.google.com/app/apikey 에서 발급받을 수 있습니다."
+        )
     return ChatOpenAI(**openai_config)
 
 
